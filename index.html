@@ -1,0 +1,776 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ClaridadedeEsmeralda - Gestão</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@3.7.1/dist/chart.min.js"></script>
+  
+  <!-- Fontes do Google -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700&family=Work+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+
+  <!-- PWA & Mobile Meta Tags -->
+  <meta name="theme-color" content="#0A4040">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Claridade">
+  <link rel="apple-touch-icon" href="https://placehold.co/180x180/0A4040/FFFFFF?text=CE&font=playfairdisplay">
+  
+  <!-- Manifesto PWA (embutido) -->
+  <link rel="manifest" href="data:application/manifest+json,{
+    &quot;short_name&quot;: &quot;Claridade&quot;,
+    &quot;name&quot;: &quot;ClaridadedeEsmeralda&quot;,
+    &quot;icons&quot;: [
+      {
+        &quot;src&quot;: &quot;https://placehold.co/192x192/0A4040/FFFFFF?text=CE&font=playfairdisplay&quot;,
+        &quot;type&quot;: &quot;image/png&quot;,
+        &quot;sizes&quot;: &quot;192x192&quot;
+      },
+      {
+        &quot;src&quot;: &quot;https://placehold.co/512x512/0A4040/FFFFFF?text=CE&font=playfairdisplay&quot;,
+        &quot;type&quot;: &quot;image/png&quot;,
+        &quot;sizes&quot;: &quot;512x512&quot;
+      }
+    ],
+    &quot;start_url&quot;: &quot;.&quot;,
+    &quot;display&quot;: &quot;standalone&quot;,
+    &quot;theme_color&quot;: &quot;#0A4040&quot;,
+    &quot;background_color&quot;: &quot;#e4f2e7&quot;
+  }">
+  
+  <script>
+    // Configuração do Tailwind para usar a nova identidade visual
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            'verde-escuro': '#0A4040',
+            'verde': '#0E5952',
+            'verde-claro': '#148C76',
+            'destaque': '#F2A74B',
+            'destaque-escuro': '#8C480D',
+          },
+          fontFamily: {
+            sans: ['Work Sans', 'sans-serif'],
+            serif: ['Playfair Display', 'serif'],
+          }
+        }
+      }
+    }
+  </script>
+
+  <style>
+    body {
+      background-color: #e4f2e7;
+      background: radial-gradient(circle, rgba(228, 242, 231, 1) 0%, rgba(225, 240, 228, 1) 100%);
+      font-family: 'Work Sans', sans-serif;
+    }
+    .method-selector::-webkit-scrollbar { width: 8px; }
+    .method-selector::-webkit-scrollbar-track { background: #f1f1f1; border-radius: 10px; }
+    .method-selector::-webkit-scrollbar-thumb { background: #888; border-radius: 10px; }
+    .method-selector::-webkit-scrollbar-thumb:hover { background: #555; }
+  </style>
+</head>
+
+<body>
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useEffect, useContext, createContext, useCallback, useMemo, useRef } = React;
+
+    // --- CONFIGURAÇÃO E DADOS ---
+    const API_URL = 'http://localhost:5000/api';
+    const METODOS_ATENDIMENTO = {
+      "Tarot": [
+        { nome: "1 Pergunta", valor: 13 }, { nome: "3 Perguntas", valor: 25 }, { nome: "5 Perguntas", valor: 34 },
+        { nome: "Conselho", valor: 19 }, { nome: "1 Pergunta + 1 Conselho", valor: 28 }, { nome: "Método Reciprocidade", valor: 37 },
+        { nome: "Método EX", valor: 46 }, { nome: "Colinho Espiritual", valor: 40 }, { nome: "Templo de Afrodite", valor: 50 },
+        { nome: "Mandala Astrológica", valor: 65 }, { nome: "10 Minutos", valor: 35 }, { nome: "15 Minutos", valor: 50 },
+        { nome: "30 Minutos", valor: 75 },
+      ],
+      "Baralho Dona 7": [
+        { nome: "1 Pergunta", valor: 13 }, { nome: "3 Perguntas", valor: 25 }, { nome: "5 Perguntas", valor: 34 },
+        { nome: "Conselho", valor: 19 },
+      ],
+      "Serviços Especiais": [
+        { nome: "Corte de Laços", valor: 120 },
+      ]
+    };
+
+    // --- CAMADA DE SERVIÇO DE API ---
+    const apiService = {
+        async request(endpoint, options = {}) {
+        const { method = 'GET', body = null } = options;
+        const token = localStorage.getItem('token');
+        const headers = new Headers({ 'Content-Type': 'application/json' });
+        if (token) {
+          headers.append('Authorization', `Bearer ${token}`);
+        }
+        const config = { method, headers, body: body ? JSON.stringify(body) : null, };
+        try {
+          const response = await fetch(`${API_URL}${endpoint}`, config);
+          if (response.status === 401) {
+            localStorage.removeItem('token');
+            window.location.hash = '#/login';
+            throw new Error('Sessão expirada. Por favor, faça o login novamente.');
+          }
+          if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.message || 'Ocorreu um erro');
+          }
+           const textResponse = await response.text();
+           if(!textResponse) return null;
+           return JSON.parse(textResponse);
+        } catch (error) {
+          console.error('API Service Error:', error);
+          throw error;
+        }
+      },
+      get(endpoint) { return this.request(endpoint); },
+      post(endpoint, body) { return this.request(endpoint, { method: 'POST', body }); },
+      put(endpoint, body) { return this.request(endpoint, { method: 'PUT', body }); },
+      delete(endpoint) { return this.request(endpoint, { method: 'DELETE' }); },
+    };
+    
+    // --- CONTEXTO DE AUTENTICAÇÃO ---
+    const AuthContext = createContext(null);
+    function AuthProvider({ children }) {
+      const [token, setToken] = useState(() => localStorage.getItem('token'));
+      const [loading, setLoading] = useState(false);
+      const login = useCallback(async (email, password) => {
+        setLoading(true);
+        try {
+          const data = await apiService.post('/auth/login', { email, password });
+          localStorage.setItem('token', data.token);
+          setToken(data.token);
+          window.location.hash = '#/';
+        } finally { setLoading(false); }
+      }, []);
+      const register = useCallback(async (name, email, password) => {
+         setLoading(true);
+         try { await apiService.post('/auth/register', { name, email, password }); } 
+         finally { setLoading(false); }
+      }, []);
+      const logout = useCallback(() => {
+        localStorage.removeItem('token');
+        setToken(null);
+        window.location.hash = '#/login';
+      }, []);
+      const value = { token, loading, login, logout, register };
+      return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+    }
+    const useAuth = () => useContext(AuthContext);
+
+    // --- COMPONENTES DE ROTEAMENTO ---
+    function Router({ children }) {
+        const [currentPath, setCurrentPath] = useState(window.location.hash || '#/');
+        useEffect(() => {
+            const handleHashChange = () => setCurrentPath(window.location.hash || '#/');
+            window.addEventListener('hashchange', handleHashChange);
+            return () => window.removeEventListener('hashchange', handleHashChange);
+        }, []);
+        const activeRoute = React.Children.toArray(children).find( child => child.props.path === currentPath );
+        return activeRoute || <p>Página não encontrada</p>;
+    }
+    function ProtectedRoute({ children }) {
+        const { token } = useAuth();
+        useEffect(() => { if (!token) { window.location.hash = '#/login'; } }, [token]);
+        return token ? children : null;
+    }
+
+    // --- COMPONENTES COMPARTILHADOS (SHARED) ---
+    function Layout({ children }) {
+        const { token, logout } = useAuth();
+        return (
+            <div className="w-full min-h-screen">
+                {token && (
+                    <nav className="bg-white/80 backdrop-blur-md shadow-sm sticky top-0 z-10">
+                        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                            <div className="flex items-center justify-between h-16">
+                                <span className="text-xl sm:text-2xl font-serif font-bold text-verde-escuro">ClaridadedeEsmeralda</span>
+                                <button onClick={logout} className="bg-verde text-white px-4 py-2 rounded-md hover:bg-verde-claro transition font-semibold text-sm sm:text-base">
+                                    Sair
+                                </button>
+                            </div>
+                        </div>
+                    </nav>
+                )}
+                <main>
+                    <div className="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">{children}</div>
+                </main>
+            </div>
+        );
+    }
+    
+    // --- COMPONENTES DA PÁGINA DASHBOARD ---
+    function AtendimentoForm({ atendimento, onSave, onCancel }) {
+        const [formData, setFormData] = useState({ nomeCliente: '', telefone: '', dataAtendimento: '', valor: '0' });
+        const [selectedMetodos, setSelectedMetodos] = useState([]);
+        const [error, setError] = useState('');
+        const isEditing = !!atendimento;
+
+        useEffect(() => {
+            if (isEditing) {
+                const date = new Date(atendimento.dataAtendimento);
+                const formattedDate = date.toISOString().slice(0, 16);
+                setFormData({ nomeCliente: atendimento.nomeCliente, telefone: atendimento.telefone || '', dataAtendimento: formattedDate, valor: atendimento.valor.toString() });
+                const metodosArray = atendimento.metodo.split(', ').map(m => m.trim());
+                const uniqueMetodos = metodosArray.map(nome => {
+                    for (const categoria in METODOS_ATENDIMENTO) {
+                        if (METODOS_ATENDIMENTO[categoria].some(m => m.nome === nome)) { return `${categoria}-${nome}`; }
+                    }
+                    return null;
+                }).filter(Boolean);
+                setSelectedMetodos(uniqueMetodos);
+            } else {
+                const now = new Date();
+                const timezoneOffset = now.getTimezoneOffset() * 60000;
+                const localISOTime = new Date(now - timezoneOffset).toISOString().slice(0, 16);
+                setFormData({ nomeCliente: '', telefone: '', dataAtendimento: localISOTime, valor: '0' });
+                setSelectedMetodos([]);
+            }
+        }, [atendimento]);
+        
+        useEffect(() => {
+            const total = selectedMetodos.reduce((sum, uniqueId) => {
+                const separatorIndex = uniqueId.indexOf('-');
+                const categoria = uniqueId.substring(0, separatorIndex);
+                const nome = uniqueId.substring(separatorIndex + 1);
+                const metodo = METODOS_ATENDIMENTO[categoria]?.find(m => m.nome === nome);
+                return sum + (metodo ? metodo.valor : 0);
+            }, 0);
+            setFormData(prev => ({ ...prev, valor: total.toString() }));
+        }, [selectedMetodos]);
+
+        const handleMetodoChange = (uniqueId) => {
+            setSelectedMetodos(prev => prev.includes(uniqueId) ? prev.filter(m => m !== uniqueId) : [...prev, uniqueId]);
+        };
+        const handleChange = (e) => {
+            const { name, value } = e.target;
+            setFormData(prev => ({ ...prev, [name]: value }));
+        };
+        const handleSubmit = async (e) => {
+            e.preventDefault();
+            setError('');
+            try {
+                const metodoNames = selectedMetodos.map(uniqueId => uniqueId.substring(uniqueId.indexOf('-') + 1));
+                const payload = { ...formData, valor: parseFloat(formData.valor), metodo: metodoNames.join(', ') };
+                if (isEditing) { await apiService.put(`/atendimentos/${atendimento._id}`, payload); } 
+                else { await apiService.post('/atendimentos', payload); }
+                onSave();
+            } catch (err) { setError(err.message); }
+        };
+
+        return (
+            <div className="bg-white/80 backdrop-blur-md p-4 sm:p-6 rounded-lg shadow-lg mb-8 border border-gray-200">
+                <h3 className="text-xl sm:text-2xl font-serif font-bold mb-6 text-verde-escuro">{isEditing ? 'Editar Atendimento' : 'Adicionar Novo Atendimento'}</h3>
+                {error && <p className="bg-red-100 text-red-700 p-3 rounded-md mb-4 text-sm">{error}</p>}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <form id="atendimento-form" onSubmit={handleSubmit} className="space-y-4">
+                        <input type="text" name="nomeCliente" value={formData.nomeCliente} onChange={handleChange} placeholder="Nome do Cliente" className="w-full px-4 py-2 border rounded-md focus:ring-2 focus:ring-destaque focus:border-transparent" required />
+                        <input type="text" name="telefone" value={formData.telefone} onChange={handleChange} placeholder="Telefone (Opcional)" className="w-full px-4 py-2 border rounded-md focus:ring-2 focus:ring-destaque focus:border-transparent" />
+                        <input type="datetime-local" name="dataAtendimento" value={formData.dataAtendimento} onChange={handleChange} className="w-full px-4 py-2 border rounded-md focus:ring-2 focus:ring-destaque focus:border-transparent" required />
+                        <div className="flex items-center gap-2">
+                           <label className="font-semibold text-verde-escuro">R$</label>
+                           <input type="number" step="0.01" name="valor" value={formData.valor} onChange={handleChange} placeholder="Valor" className="w-full px-4 py-2 border rounded-md focus:ring-2 focus:ring-destaque focus:border-transparent" required />
+                        </div>
+                    </form>
+                    <div className="border rounded-md p-4 bg-gray-50/50">
+                        <h4 className="font-semibold text-verde-escuro mb-3">Métodos</h4>
+                        <div className="space-y-3 max-h-60 overflow-y-auto method-selector pr-2">
+                          {Object.entries(METODOS_ATENDIMENTO).map(([categoria, metodos]) => (
+                            <div key={categoria}>
+                               <p className={`font-bold text-sm p-2 rounded-t-md ${
+                                categoria === 'Tarot' ? 'bg-destaque/30 text-destaque-escuro'
+                                : categoria === 'Baralho Dona 7' ? 'bg-red-200 text-red-800'
+                                : 'bg-verde-claro/30 text-verde-escuro'
+                              }`}>{categoria}</p>
+                              <div className="border border-t-0 p-3 rounded-b-md">
+                                {metodos.map(metodo => {
+                                    const uniqueId = `${categoria}-${metodo.nome}`;
+                                    return (
+                                        <label key={uniqueId} className="flex items-center justify-between p-2 hover:bg-gray-100 rounded-md cursor-pointer">
+                                            <div>
+                                                <input type="checkbox" checked={selectedMetodos.includes(uniqueId)} onChange={() => handleMetodoChange(uniqueId)} className="h-4 w-4 text-verde border-gray-300 rounded focus:ring-verde-claro"/>
+                                                <span className="ml-3 text-sm text-gray-600">{metodo.nome}</span>
+                                            </div>
+                                            <span className="text-sm font-medium text-gray-800">R$ {metodo.valor.toFixed(2)}</span>
+                                        </label>
+                                    );
+                                })}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                    </div>
+                </div>
+                <div className="flex justify-end gap-4 mt-6 pt-4 border-t">
+                    <button type="button" onClick={onCancel} className="bg-gray-300 text-gray-800 px-4 py-2 rounded-md hover:bg-gray-400 transition font-semibold">Cancelar</button>
+                    <button type="submit" form="atendimento-form" className="bg-verde text-white px-6 py-2 rounded-md hover:bg-verde-claro transition font-semibold">Salvar</button>
+                </div>
+            </div>
+        );
+    }
+    
+    function AtendimentoTable({ atendimentos, onEdit, onDelete, requestSort, sortConfig }) {
+        const getSortIndicator = (key) => {
+            if (sortConfig.key !== key) return '↕';
+            return sortConfig.direction === 'ascending' ? '↑' : '↓';
+        };
+        if (atendimentos.length === 0) {
+            return <p className="text-center text-gray-500 mt-8 py-4 bg-white/80 backdrop-blur-md rounded-md shadow-sm">Nenhum atendimento encontrado para o período selecionado.</p>
+        }
+        return (
+             <div className="overflow-x-auto">
+                <table className="min-w-full bg-white/80 backdrop-blur-md rounded-lg shadow-md">
+                    <thead className="bg-gray-100/80">
+                        <tr>
+                            {['Cliente', 'Data', 'Método', 'Valor'].map(col => (
+                                <th key={col} className="text-left py-3 px-4 uppercase font-semibold text-xs sm:text-sm text-verde-escuro cursor-pointer" onClick={() => requestSort(col.toLowerCase())}>
+                                    {col} <span className="text-gray-400">{getSortIndicator(col.toLowerCase())}</span>
+                                </th>
+                            ))}
+                            <th className="text-center py-3 px-4 uppercase font-semibold text-xs sm:text-sm text-verde-escuro">Ações</th>
+                        </tr>
+                    </thead>
+                    <tbody className="text-gray-700">
+                        {atendimentos.map(at => (
+                            <tr key={at._id} className="border-b border-gray-200 hover:bg-gray-50/50">
+                                <td className="py-3 px-4 text-sm font-semibold text-verde-escuro">{at.nomeCliente}</td>
+                                <td className="py-3 px-4 text-xs sm:text-sm">{new Date(at.dataAtendimento).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })}</td>
+                                <td className="py-3 px-4 text-xs sm:text-sm max-w-xs truncate">{at.metodo}</td>
+                                <td className="py-3 px-4 text-sm font-medium">R$ {at.valor.toFixed(2).replace('.',',')}</td>
+                                <td className="py-3 px-4 text-center">
+                                    <button onClick={() => onEdit(at)} className="text-verde hover:underline mr-4 font-semibold text-sm">Editar</button>
+                                    <button onClick={() => onDelete(at._id)} className="text-red-600 hover:underline font-semibold text-sm">Apagar</button>
+                                </td>
+                            </tr>
+                        ))}
+                    </tbody>
+                </table>
+            </div>
+        )
+    }
+
+    function AtendimentoFilters({ filter, onFilterChange }) {
+        const periodos = ['Hoje', 'Semana', 'Mês', 'Ano', 'Todos'];
+        return (
+            <div className="bg-white/80 backdrop-blur-md p-4 rounded-lg shadow-md mb-6 flex flex-col md:flex-row justify-between items-center gap-4">
+                <div className="flex items-center gap-2 flex-wrap justify-center">
+                    {periodos.map(p => (
+                        <button key={p} 
+                                onClick={() => onFilterChange('period', p)}
+                                className={`px-3 py-1.5 sm:px-4 sm:py-2 rounded-md text-xs sm:text-sm font-semibold transition ${filter.period === p ? 'bg-verde text-white shadow' : 'bg-white text-gray-700 hover:bg-gray-100'}`}>
+                            {p}
+                        </button>
+                    ))}
+                </div>
+                <input type="text" value={filter.search} onChange={(e) => onFilterChange('search', e.target.value)} placeholder="Buscar por cliente ou método..." className="px-4 py-2 border rounded-md md:w-1/3 w-full focus:ring-2 focus:ring-destaque focus:border-transparent text-sm"/>
+            </div>
+        );
+    }
+    
+    function DashboardCharts({ atendimentos }) {
+      const faturamentoMensalRef = useRef(null);
+      const metodosRef = useRef(null);
+
+      useEffect(() => {
+        let faturamentoChart, metodosChart;
+        if(atendimentos.length > 0) {
+          const faturamentoPorMes = atendimentos.reduce((acc, at) => {
+            const mes = new Date(at.dataAtendimento).toLocaleString('pt-BR', { month: 'short', year: '2-digit' });
+            acc[mes] = (acc[mes] || 0) + at.valor;
+            return acc;
+          }, {});
+
+          if (faturamentoMensalRef.current) {
+             const faturamentoCtx = faturamentoMensalRef.current.getContext('2d');
+             faturamentoChart = new Chart(faturamentoCtx, {
+              type: 'bar',
+              data: { labels: Object.keys(faturamentoPorMes), datasets: [{ label: 'Faturamento Mensal', data: Object.values(faturamentoPorMes), backgroundColor: '#0E5952', borderColor: '#0A4040', borderWidth: 1 }] },
+              options: { responsive: true, scales: { y: { beginAtZero: true } } }
+            });
+          }
+
+          const atendimentosPorMetodo = atendimentos.reduce((acc, at) => {
+             const metodos = at.metodo.split(',').map(m => m.trim());
+             metodos.forEach(m => { acc[m] = (acc[m] || 0) + 1; });
+             return acc;
+          }, {});
+
+          if(metodosRef.current){
+              const metodosCtx = metodosRef.current.getContext('2d');
+              metodosChart = new Chart(metodosCtx, {
+                type: 'doughnut',
+                data: { labels: Object.keys(atendimentosPorMetodo), datasets: [{ label: 'Atendimentos por Método', data: Object.values(atendimentosPorMetodo), backgroundColor: ['#0E5952', '#F2A74B', '#148C76', '#8C480D', '#0A4040'], }] },
+                options: { responsive: true, plugins: { legend: { position: 'top' } } }
+              });
+          }
+        }
+        return () => {
+          if (faturamentoChart) faturamentoChart.destroy();
+          if (metodosChart) metodosChart.destroy();
+        };
+      }, [atendimentos]);
+
+      return (
+        <div className="mt-8 grid grid-cols-1 lg:grid-cols-2 gap-8">
+            <div className="bg-white/80 backdrop-blur-md p-4 sm:p-6 rounded-lg shadow-md">
+                <h3 className="font-serif font-bold text-lg text-verde-escuro mb-4">Faturamento Mensal</h3>
+                <canvas ref={faturamentoMensalRef}></canvas>
+            </div>
+            <div className="bg-white/80 backdrop-blur-md p-4 sm:p-6 rounded-lg shadow-md">
+                <h3 className="font-serif font-bold text-lg text-verde-escuro mb-4">Atendimentos por Método</h3>
+                <canvas ref={metodosRef}></canvas>
+            </div>
+        </div>
+      );
+    }
+
+    function Pagination({ totalItems, itemsPerPage, currentPage, onPageChange, onItemsPerPageChange }) {
+        const totalPages = itemsPerPage === 'Todos' ? 1 : Math.ceil(totalItems / itemsPerPage);
+
+        return (
+            <div className="mt-6 flex flex-col sm:flex-row justify-between items-center text-sm gap-4">
+                 <div className="flex items-center gap-2">
+                    <span className="text-gray-600">Itens por página:</span>
+                    <select value={itemsPerPage} onChange={onItemsPerPageChange} className="bg-white border rounded-md px-2 py-1 focus:ring-2 focus:ring-destaque focus:border-transparent">
+                        <option value={10}>10</option>
+                        <option value={25}>25</option>
+                        <option value={50}>50</option>
+                        <option value={100}>100</option>
+                        <option value="Todos">Todos</option>
+                    </select>
+                </div>
+            
+                {totalPages > 1 && (
+                     <div className="flex items-center gap-2">
+                        <button onClick={() => onPageChange(currentPage - 1)} disabled={currentPage === 1} className="px-3 py-1 bg-white border rounded-md disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-100">Anterior</button>
+                        <span className="text-gray-600 font-semibold">Página {currentPage} de {totalPages}</span>
+                        <button onClick={() => onPageChange(currentPage + 1)} disabled={currentPage === totalPages} className="px-3 py-1 bg-white border rounded-md disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-100">Próxima</button>
+                    </div>
+                )}
+            </div>
+        );
+    }
+    
+    function DashboardKPIs({ data, loading }) {
+        const metaMensal = 4000;
+        const faturamento = data?.faturamentoMes || 0;
+        const atendimentos = data?.atendimentosMes || 0;
+        const ticketMedio = data?.ticketMedio || 0;
+        const progressoMeta = metaMensal > 0 ? (faturamento / metaMensal) * 100 : 0;
+
+        const kpis = [
+            { label: 'Faturamento no Mês', value: `R$ ${faturamento.toFixed(2).replace('.',',')}`, icon: '💰' },
+            { label: 'Atendimentos no Mês', value: atendimentos, icon: '✨' },
+            { label: 'Ticket Médio', value: `R$ ${ticketMedio.toFixed(2).replace('.',',')}`, icon: '🎫' }
+        ];
+
+        if (loading) {
+            return (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+                    {[...Array(4)].map((_, i) => (
+                        <div key={i} className="bg-white/50 p-6 rounded-lg shadow-md animate-pulse">
+                            <div className="h-4 bg-gray-200 rounded w-3/4 mb-3"></div>
+                            <div className="h-8 bg-gray-300 rounded w-1/2"></div>
+                        </div>
+                    ))}
+                </div>
+            )
+        }
+
+        return (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+                {kpis.map(kpi => (
+                    <div key={kpi.label} className="bg-white/80 backdrop-blur-md p-6 rounded-lg shadow-lg border border-gray-200/50">
+                        <h4 className="text-sm font-semibold text-gray-500 flex items-center gap-2">
+                            <span>{kpi.icon}</span>{kpi.label}
+                        </h4>
+                        <p className="text-2xl sm:text-3xl font-bold text-verde-escuro mt-2">{kpi.value}</p>
+                    </div>
+                ))}
+                <div className="bg-white/80 backdrop-blur-md p-6 rounded-lg shadow-lg border border-gray-200/50">
+                    <h4 className="text-sm font-semibold text-gray-500 flex items-center gap-2"><span>🎯</span>Meta Mensal</h4>
+                    <div className="mt-3">
+                        <div className="flex justify-between items-center mb-1">
+                            <span className="text-xl font-bold text-verde-escuro">{progressoMeta.toFixed(0)}%</span>
+                            <span className="text-xs text-gray-400">Meta: R$ {metaMensal.toFixed(2).replace('.',',')}</span>
+                        </div>
+                        <div className="w-full bg-gray-200 rounded-full h-2.5">
+                            <div className="bg-destaque h-2.5 rounded-full transition-all duration-500" style={{ width: `${Math.min(progressoMeta, 100)}%` }}></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        );
+    }
+
+    // --- PÁGINAS ---
+    function LoginPage() {
+        const [email, setEmail] = useState('');
+        const [password, setPassword] = useState('');
+        const [error, setError] = useState('');
+        const { login, loading } = useAuth();
+        const handleSubmit = async (e) => {
+            e.preventDefault();
+            setError('');
+            try { await login(email, password); } catch (err) { setError(err.message); }
+        };
+        return (
+            <div className="flex items-center justify-center min-h-screen p-4">
+                <div className="w-full max-w-md bg-white p-8 rounded-xl shadow-lg">
+                <h2 className="text-3xl sm:text-4xl font-serif font-bold text-center text-verde-escuro mb-6">Acessar Painel</h2>
+                {error && <p className="bg-red-100 text-red-700 p-3 rounded-md mb-4 text-sm">{error}</p>}
+                <form onSubmit={handleSubmit}>
+                    <div className="mb-4">
+                    <label className="block text-gray-600 mb-2" htmlFor="email">Email</label>
+                    <input type="email" id="email" value={email} onChange={(e) => setEmail(e.target.value)} className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-verde" required />
+                    </div>
+                    <div className="mb-6">
+                    <label className="block text-gray-600 mb-2" htmlFor="password">Senha</label>
+                    <input type="password" id="password" value={password} onChange={(e) => setPassword(e.target.value)} className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-verde" required />
+                    </div>
+                    <button type="submit" disabled={loading} className="w-full bg-verde text-white py-2.5 rounded-lg hover:bg-verde-claro transition disabled:bg-verde-claro/50 font-semibold">
+                        {loading ? 'Entrando...' : 'Entrar'}
+                    </button>
+                </form>
+                <p className="text-center text-gray-600 mt-6">
+                    Não tem uma conta? <a href="#/register" className="text-verde hover:underline font-medium">Registre-se aqui</a>
+                </p>
+                </div>
+            </div>
+        );
+    }
+    
+    function RegisterPage() {
+        const [name, setName] = useState('');
+        const [email, setEmail] = useState('');
+        const [password, setPassword] = useState('');
+        const [message, setMessage] = useState('');
+        const [error, setError] = useState('');
+        const { register, loading } = useAuth();
+        const handleSubmit = async (e) => {
+            e.preventDefault();
+            setError(''); setMessage('');
+            try {
+                await register(name, email, password);
+                setMessage('Registro bem-sucedido! Redirecionando para o login...');
+                setTimeout(() => window.location.hash = '#/login', 2000);
+            } catch (err) { setError(err.message); }
+        };
+        return (
+            <div className="flex items-center justify-center min-h-screen p-4">
+                <div className="w-full max-w-md bg-white p-8 rounded-xl shadow-lg">
+                <h2 className="text-3xl sm:text-4xl font-serif font-bold text-center text-verde-escuro mb-6">Criar Conta</h2>
+                {error && <p className="bg-red-100 text-red-700 p-3 rounded-md mb-4 text-sm">{error}</p>}
+                {message && <p className="bg-green-100 text-green-700 p-3 rounded-md mb-4 text-sm">{message}</p>}
+                <form onSubmit={handleSubmit}>
+                    <div className="mb-4">
+                        <label className="block text-gray-600 mb-2" htmlFor="name">Nome</label>
+                        <input type="text" id="name" value={name} onChange={(e) => setName(e.target.value)} className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-verde" required />
+                    </div>
+                    <div className="mb-4">
+                        <label className="block text-gray-600 mb-2" htmlFor="email">Email</label>
+                        <input type="email" id="email" value={email} onChange={(e) => setEmail(e.target.value)} className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-verde" required />
+                    </div>
+                    <div className="mb-6">
+                        <label className="block text-gray-600 mb-2" htmlFor="password">Senha</label>
+                        <input type="password" id="password" value={password} onChange={(e) => setPassword(e.target.value)} className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-verde" required />
+                    </div>
+                    <button type="submit" disabled={loading} className="w-full bg-verde text-white py-2.5 rounded-lg hover:bg-verde-claro transition disabled:bg-verde-claro/50 font-semibold">
+                        {loading ? 'Registrando...' : 'Registrar'}
+                    </button>
+                </form>
+                <p className="text-center text-gray-600 mt-6">
+                    Já tem uma conta? <a href="#/login" className="text-verde hover:underline font-medium">Faça o login</a>
+                </p>
+                </div>
+            </div>
+        );
+    }
+    
+    function DashboardPage() {
+        const [atendimentos, setAtendimentos] = useState([]);
+        const [loading, setLoading] = useState(true);
+        const [error, setError] = useState('');
+        const [editingAtendimento, setEditingAtendimento] = useState(null);
+        const [isCreating, setIsCreating] = useState(false);
+        const [filter, setFilter] = useState({ period: 'Mês', search: '' });
+        const [dashboardData, setDashboardData] = useState(null);
+        const [kpiLoading, setKpiLoading] = useState(true);
+        const [sortConfig, setSortConfig] = useState({ key: 'data', direction: 'descending' });
+        const [currentPage, setCurrentPage] = useState(1);
+        const [itemsPerPage, setItemsPerPage] = useState(10);
+
+        const fetchAtendimentos = useCallback(async () => {
+            setLoading(true); setError('');
+            try { const data = await apiService.get('/atendimentos'); setAtendimentos(data); } 
+            catch (err) { setError(err.message); } 
+            finally { setLoading(false); }
+        }, []);
+
+        const fetchKpis = useCallback(async () => {
+            setKpiLoading(true);
+            try {
+                const data = await apiService.get('/dashboard/kpis');
+                setDashboardData(data);
+            } catch (err) {
+                console.error("Erro ao buscar KPIs:", err);
+                setError('Não foi possível carregar os dados do dashboard.');
+            } finally {
+                setKpiLoading(false);
+            }
+        }, []);
+
+        useEffect(() => { 
+            fetchAtendimentos(); 
+            fetchKpis();
+        }, [fetchAtendimentos, fetchKpis]);
+        
+        const handleFilterChange = (key, value) => { 
+            setFilter(prev => ({ ...prev, [key]: value })); 
+            setCurrentPage(1);
+        };
+        const requestSort = (key) => {
+            let direction = 'ascending';
+            if (sortConfig.key === key && sortConfig.direction === 'ascending') { direction = 'descending'; }
+            setSortConfig({ key, direction });
+            setCurrentPage(1);
+        };
+        
+        const filteredAndSortedAtendimentos = useMemo(() => {
+            let items = [...atendimentos];
+            const today = new Date();
+            
+            if(filter.period !== 'Todos'){
+                items = items.filter(at => {
+                    const atDate = new Date(at.dataAtendimento);
+                    if (filter.period === 'Hoje') return atDate.toDateString() === today.toDateString();
+                    if (filter.period === 'Semana') {
+                        const firstDayOfWeek = new Date(today);
+                        firstDayOfWeek.setDate(today.getDate() - today.getDay());
+                        firstDayOfWeek.setHours(0, 0, 0, 0);
+                        return atDate >= firstDayOfWeek;
+                    }
+                    if (filter.period === 'Mês') return atDate.getMonth() === today.getMonth() && atDate.getFullYear() === today.getFullYear();
+                    if (filter.period === 'Ano') return atDate.getFullYear() === today.getFullYear();
+                    return true;
+                });
+            }
+
+            if (filter.search) {
+                const searchTerm = filter.search.toLowerCase();
+                items = items.filter(at => at.nomeCliente.toLowerCase().includes(searchTerm) || at.metodo.toLowerCase().includes(searchTerm));
+            }
+
+            items.sort((a, b) => {
+                let aValue = a.nomeCliente, bValue = b.nomeCliente;
+                if(sortConfig.key === 'data') { aValue = new Date(a.dataAtendimento); bValue = new Date(b.dataAtendimento); } 
+                else if (sortConfig.key === 'valor'){ aValue = a.valor; bValue = b.valor; } 
+                else if(sortConfig.key === 'método'){ aValue = a.metodo; bValue = b.metodo; }
+                if (aValue < bValue) return sortConfig.direction === 'ascending' ? -1 : 1;
+                if (aValue > bValue) return sortConfig.direction === 'ascending' ? 1 : -1;
+                return 0;
+            });
+            return items;
+        }, [atendimentos, filter, sortConfig]);
+
+        const paginatedItems = useMemo(() => {
+            if (itemsPerPage === 'Todos') return filteredAndSortedAtendimentos;
+            const numericItemsPerPage = Number(itemsPerPage);
+            const startIndex = (currentPage - 1) * numericItemsPerPage;
+            return filteredAndSortedAtendimentos.slice(startIndex, startIndex + numericItemsPerPage);
+        }, [filteredAndSortedAtendimentos, currentPage, itemsPerPage]);
+
+        const handleDelete = async (id) => {
+            if (confirm('Tem certeza que deseja apagar este atendimento?')) {
+                try { 
+                    await apiService.delete(`/atendimentos/${id}`); 
+                    fetchAtendimentos();
+                    fetchKpis(); // Atualiza os KPIs após apagar
+                } 
+                catch (err) { setError(err.message); }
+            }
+        };
+        const handleSave = () => { 
+            setEditingAtendimento(null); 
+            setIsCreating(false); 
+            fetchAtendimentos(); 
+            fetchKpis(); // Atualiza os KPIs após salvar
+        };
+        const handleCancel = () => { setEditingAtendimento(null); setIsCreating(false); };
+        const handleStartEdit = (at) => { setIsCreating(false); setEditingAtendimento(at); window.scrollTo(0, 0); };
+        const handleStartCreate = () => { setEditingAtendimento(null); setIsCreating(true); window.scrollTo(0, 0); };
+        
+        const handlePageChange = (page) => setCurrentPage(page);
+        const handleItemsPerPageChange = (event) => {
+            const value = event.target.value;
+            setItemsPerPage(value === 'Todos' ? 'Todos' : Number(value));
+            setCurrentPage(1);
+        };
+
+
+        return (
+            <div>
+
+                <div className="flex flex-col sm:flex-row justify-between sm:items-center mb-6 gap-4 pt-6 border-t border-verde-claro/20">
+                    <h1 className="text-3xl sm:text-4xl font-serif font-bold text-verde-escuro">Gestão de Atendimentos</h1>
+                    <button onClick={handleStartCreate} className="bg-destaque text-white px-5 py-2.5 rounded-lg hover:bg-destaque-escuro transition shadow font-semibold w-full sm:w-auto">
+                        + Novo Atendimento
+                    </button>
+                </div>
+
+                {(isCreating || editingAtendimento) && <AtendimentoForm atendimento={editingAtendimento} onSave={handleSave} onCancel={handleCancel} />}
+                
+                <AtendimentoFilters filter={filter} onFilterChange={handleFilterChange} />
+                {loading && <p className="text-center p-4">Carregando atendimentos...</p>}
+                {error && <p className="bg-red-100 text-red-700 p-3 rounded-md text-sm">{error}</p>}
+                {!loading && !error && (
+                    <>
+                        <AtendimentoTable atendimentos={paginatedItems} onEdit={handleStartEdit} onDelete={handleDelete} requestSort={requestSort} sortConfig={sortConfig}/>
+                        <Pagination 
+                            totalItems={filteredAndSortedAtendimentos.length}
+                            itemsPerPage={itemsPerPage}
+                            currentPage={currentPage}
+                            onPageChange={handlePageChange}
+                            onItemsPerPageChange={handleItemsPerPageChange}
+                        />
+                    </>
+                )}
+                <h2 className="text-2xl sm:text-3xl font-serif font-bold text-verde-escuro mt-6 gap-4 p-6 border-t border-verde-claro/20">Dashboard Estratégico</h2>
+                
+                <DashboardKPIs data={dashboardData} loading={kpiLoading} />
+
+                {!loading && !error && atendimentos.length > 0 && <DashboardCharts atendimentos={atendimentos} />}
+            </div>
+        );
+    }
+    
+    // --- APLICAÇÃO PRINCIPAL ---
+    function App() {
+      return (
+        <AuthProvider>
+          <Layout>
+            <Router>
+                <div path="#/"><ProtectedRoute><DashboardPage /></ProtectedRoute></div>
+                <div path="#/login"><LoginPage /></div>
+                <div path="#/register"><RegisterPage /></div>
+            </Router>
+          </Layout>
+        </AuthProvider>
+      );
+    }
+    
+    ReactDOM.render(<App />, document.getElementById('root'));
+  </script>
+</body>
+</html>
+
