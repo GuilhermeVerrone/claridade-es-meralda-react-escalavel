@@ -5,16 +5,6 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>ClaridadedeEsmeralda - Gestão</title>
-  <script src="https://cdn.tailwindcss.com"></script>
-  <script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
-  <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
-  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/chart.js@3.7.1/dist/chart.min.js"></script>
-  
-  <!-- Fontes do Google -->
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700&family=Work+Sans:wght@400;500;600&display=swap" rel="stylesheet">
 
   <!-- PWA & Mobile Meta Tags -->
   <meta name="theme-color" content="#0A4040">
@@ -44,6 +34,17 @@
     &quot;theme_color&quot;: &quot;#0A4040&quot;,
     &quot;background_color&quot;: &quot;#e4f2e7&quot;
   }">
+
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@3.7.1/dist/chart.min.js"></script>
+  
+  <!-- Fontes do Google -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700&family=Work+Sans:wght@400;500;600&display=swap" rel="stylesheet">
   
   <script>
     // Configuração do Tailwind para usar a nova identidade visual
@@ -720,9 +721,12 @@
 
         return (
             <div>
+                <h1 className="text-3xl sm:text-4xl font-serif font-bold text-verde-escuro mb-6">Dashboard Estratégico</h1>
+                
+                <DashboardKPIs data={dashboardData} loading={kpiLoading} />
 
                 <div className="flex flex-col sm:flex-row justify-between sm:items-center mb-6 gap-4 pt-6 border-t border-verde-claro/20">
-                    <h1 className="text-3xl sm:text-4xl font-serif font-bold text-verde-escuro">Gestão de Atendimentos</h1>
+                    <h2 className="text-2xl sm:text-3xl font-serif font-bold text-verde-escuro">Gestão de Atendimentos</h2>
                     <button onClick={handleStartCreate} className="bg-destaque text-white px-5 py-2.5 rounded-lg hover:bg-destaque-escuro transition shadow font-semibold w-full sm:w-auto">
                         + Novo Atendimento
                     </button>
@@ -745,10 +749,6 @@
                         />
                     </>
                 )}
-                <h2 className="text-2xl sm:text-3xl font-serif font-bold text-verde-escuro mt-6 gap-4 p-6 border-t border-verde-claro/20">Dashboard Estratégico</h2>
-                
-                <DashboardKPIs data={dashboardData} loading={kpiLoading} />
-
                 {!loading && !error && atendimentos.length > 0 && <DashboardCharts atendimentos={atendimentos} />}
             </div>
         );
@@ -770,6 +770,69 @@
     }
     
     ReactDOM.render(<App />, document.getElementById('root'));
+  </script>
+
+  <!-- Service Worker Registration -->
+  <script>
+    if ('serviceWorker' in navigator) {
+      const serviceWorkerCode = `
+        const CACHE_NAME = 'claridade-esmeralda-cache-v1';
+        // Adicione aqui os URLs dos seus assets principais para o cache.
+        // O Service Worker tentará guardar estes ficheiros em cache na instalação.
+        const urlsToCache = [
+          '/',
+          'https://cdn.tailwindcss.com',
+          'https://unpkg.com/react@18/umd/react.development.js',
+          'https://unpkg.com/react-dom@18/umd/react-dom.development.js',
+          'https://unpkg.com/@babel/standalone/babel.min.js',
+          'https://cdn.jsdelivr.net/npm/chart.js@3.7.1/dist/chart.min.js',
+          'https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700&family=Work+Sans:wght@400;500;600&display=swap'
+        ];
+
+        self.addEventListener('install', event => {
+          event.waitUntil(
+            caches.open(CACHE_NAME)
+              .then(cache => {
+                console.log('Cache aberto');
+                // O addAll pode falhar se um dos URLs falhar (ex: fontes do Google se estiver offline)
+                // Usamos requisições individuais para mais robustez.
+                const cachePromises = urlsToCache.map(url => {
+                    return fetch(new Request(url, {mode: 'no-cors'})).then(response => cache.put(url, response));
+                });
+                return Promise.all(cachePromises);
+              })
+          );
+        });
+
+        self.addEventListener('fetch', event => {
+          event.respondWith(
+            caches.match(event.request)
+              .then(response => {
+                // Se o recurso estiver no cache, retorna-o
+                if (response) {
+                  return response;
+                }
+                // Caso contrário, busca na rede
+                return fetch(event.request);
+              }
+            )
+          );
+        });
+      `;
+      
+      const blob = new Blob([serviceWorkerCode], { type: 'application/javascript' });
+      const swUrl = URL.createObjectURL(blob);
+
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register(swUrl)
+          .then(registration => {
+            console.log('ServiceWorker registado com sucesso: ', registration.scope);
+          })
+          .catch(error => {
+            console.log('Registo do ServiceWorker falhou: ', error);
+          });
+      });
+    }
   </script>
 </body>
 </html>
